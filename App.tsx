@@ -4,18 +4,22 @@ import { SafeAreaView, StatusBar, View, Text, StyleSheet, TouchableOpacity, Plat
 import { store, useAppSelector, useAppDispatch } from './src/presentation/store';
 import { lightTheme, darkTheme } from './src/presentation/theme/theme';
 import { StorageService, STORAGE_KEYS } from './src/application/StorageService';
+import { AppIcon, IconName } from './src/presentation/components/Icon';
 
 // Import Slices & Actions
 import { setSettingsState, setPinVerified } from './src/presentation/store/settingsSlice';
 import { setMilkState } from './src/presentation/store/milkSlice';
 import { setLaundryState } from './src/presentation/store/laundrySlice';
 import { setMaidState } from './src/presentation/store/maidSlice';
+import { setContactsState } from './src/presentation/store/contactsSlice';
+import { setHouseholdState } from './src/presentation/store/householdSlice';
 
 // Import Screens
 import DashboardScreen from './src/presentation/screens/DashboardScreen';
 import MilkLedgerScreen from './src/presentation/screens/MilkLedgerScreen';
 import LaundryLedgerScreen from './src/presentation/screens/LaundryLedgerScreen';
 import MaidLedgerScreen from './src/presentation/screens/MaidLedgerScreen';
+import DirectoryScreen from './src/presentation/screens/DirectoryScreen';
 import SettlementsScreen from './src/presentation/screens/SettlementsScreen';
 import SettingsScreen from './src/presentation/screens/SettingsScreen';
 
@@ -68,6 +72,17 @@ const AppContent: React.FC = () => {
         if (maids.length > 0 || attendance.length > 0 || payments.length > 0) {
           dispatch(setMaidState({ maids, attendance, payments }));
         }
+
+        const contacts = await StorageService.load(STORAGE_KEYS.CONTACTS, null);
+        if (contacts && contacts.length > 0) {
+          dispatch(setContactsState(contacts));
+        }
+
+        const household = await StorageService.load(STORAGE_KEYS.HOUSEHOLD, null);
+        const dismissedAlerts = await StorageService.load(STORAGE_KEYS.DISMISSED_ALERTS, []);
+        if (household) {
+          dispatch(setHouseholdState({ profile: household, dismissedAlertIds: dismissedAlerts }));
+        }
       } catch (e) {
         console.error('Error loading stored ledger data:', e);
       } finally {
@@ -88,6 +103,8 @@ const AppContent: React.FC = () => {
         return <LaundryLedgerScreen colors={colors} />;
       case 'maids':
         return <MaidLedgerScreen colors={colors} />;
+      case 'directory':
+        return <DirectoryScreen colors={colors} />;
       case 'settlements':
         return <SettlementsScreen colors={colors} />;
       case 'settings':
@@ -116,6 +133,16 @@ const AppContent: React.FC = () => {
     );
   }
 
+  const tabs: { id: string; label: string; icon: IconName }[] = [
+    { id: 'dashboard', label: 'Home', icon: 'house' },
+    { id: 'milk', label: 'Milk', icon: 'milk' },
+    { id: 'laundry', label: 'Laundry', icon: 'laundry' },
+    { id: 'maids', label: 'House Help', icon: 'maids' },
+    { id: 'directory', label: 'Contacts', icon: 'directory' },
+    { id: 'settlements', label: 'Reports', icon: 'reports' },
+    { id: 'settings', label: 'Settings', icon: 'settings' },
+  ];
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle={settings.theme === 'dark' ? 'light-content' : 'dark-content'} />
@@ -125,55 +152,47 @@ const AppContent: React.FC = () => {
         {renderActiveScreen()}
       </View>
 
-      {/* Sleek Bottom Tab Bar */}
+      {/* Crisp & Intuitive Bottom Tab Bar */}
       <View style={[styles.tabBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
-        <TouchableOpacity
-          style={styles.tabItem}
-          onPress={() => setActiveScreen('dashboard')}
-        >
-          <Text style={styles.tabEmoji}>🏠</Text>
-          <Text style={[styles.tabLabel, { color: activeScreen === 'dashboard' ? colors.primary : colors.textMuted }]}>Home</Text>
-        </TouchableOpacity>
+        {tabs.map(tab => {
+          const isActive = activeScreen === tab.id;
+          const activeBg = colors.theme === 'dark' ? 'rgba(129, 140, 248, 0.18)' : '#eef2ff';
+          const iconColor = isActive ? colors.primary : colors.textMuted;
 
-        <TouchableOpacity
-          style={styles.tabItem}
-          onPress={() => setActiveScreen('milk')}
-        >
-          <Text style={styles.tabEmoji}>🥛</Text>
-          <Text style={[styles.tabLabel, { color: activeScreen === 'milk' ? colors.primary : colors.textMuted }]}>Milk</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.tabItem}
-          onPress={() => setActiveScreen('laundry')}
-        >
-          <Text style={styles.tabEmoji}>🧺</Text>
-          <Text style={[styles.tabLabel, { color: activeScreen === 'laundry' ? colors.primary : colors.textMuted }]}>Laundry</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.tabItem}
-          onPress={() => setActiveScreen('maids')}
-        >
-          <Text style={styles.tabEmoji}>👤</Text>
-          <Text style={[styles.tabLabel, { color: activeScreen === 'maids' ? colors.primary : colors.textMuted }]}>Maids</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.tabItem}
-          onPress={() => setActiveScreen('settlements')}
-        >
-          <Text style={styles.tabEmoji}>📊</Text>
-          <Text style={[styles.tabLabel, { color: activeScreen === 'settlements' ? colors.primary : colors.textMuted }]}>Reports</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.tabItem}
-          onPress={() => setActiveScreen('settings')}
-        >
-          <Text style={styles.tabEmoji}>⚙️</Text>
-          <Text style={[styles.tabLabel, { color: activeScreen === 'settings' ? colors.primary : colors.textMuted }]}>Settings</Text>
-        </TouchableOpacity>
+          return (
+            <TouchableOpacity
+              key={tab.id}
+              style={styles.tabItem}
+              onPress={() => setActiveScreen(tab.id)}
+              activeOpacity={0.7}
+            >
+              <View
+                style={[
+                  styles.iconPill,
+                  isActive && { backgroundColor: activeBg },
+                ]}
+              >
+                <AppIcon
+                  name={tab.icon}
+                  size={20}
+                  color={iconColor}
+                  strokeWidth={isActive ? 2.6 : 2}
+                />
+              </View>
+              <Text
+                style={[
+                  styles.tabLabel,
+                  {
+                    color: iconColor,
+                    fontWeight: isActive ? '800' : '600',
+                  },
+                ]}
+              >
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </SafeAreaView>
   );
@@ -201,24 +220,41 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     flexDirection: 'row',
-    height: 64,
+    height: 68,
     borderTopWidth: 1,
-    paddingBottom: Platform.OS === 'ios' ? 15 : 5,
-    paddingTop: 5,
+    paddingBottom: Platform.OS === 'ios' ? 14 : 6,
+    paddingTop: 4,
     justifyContent: 'space-around',
     alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 8,
+      },
+      web: {
+        boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.04)',
+      },
+    }),
   },
   tabItem: {
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
   },
-  tabEmoji: {
-    fontSize: 20,
+  iconPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
   },
   tabLabel: {
     fontSize: 10,
-    fontWeight: '600',
-    marginTop: 2,
   },
 });
