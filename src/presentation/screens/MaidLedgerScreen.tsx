@@ -7,9 +7,9 @@ import { Button } from '../components/Button';
 import { EmptyState } from '../components/EmptyState';
 import { CalendarView } from '../components/CalendarView';
 import { useAppSelector, useAppDispatch } from '../store';
-import { addMaid, logAttendance } from '../store/maidSlice';
-import { calculateSalaryForMonth } from '../../application/SalaryCalculator';
-import { Maid, MaidAttendance, AttendanceStatus } from '../../domain/types';
+import { addMaid, logAttendance, addAdvance } from '../store/maidSlice';
+import { calculateSalaryForMonth, calculateMaidStatements } from '../../application/SalaryCalculator';
+import { Maid, MaidAttendance, AttendanceStatus, Advance } from '../../domain/types';
 
 interface MaidLedgerScreenProps {
   colors: ThemeColors;
@@ -20,6 +20,7 @@ export const MaidLedgerScreen: React.FC<MaidLedgerScreenProps> = ({ colors }) =>
   const maidState = useAppSelector(state => state.maid);
 
   const [selectedMaid, setSelectedMaid] = useState<Maid | null>(null);
+
 
   // Modals visibility
   const [profileModalVisible, setProfileModalVisible] = useState(false);
@@ -41,6 +42,58 @@ export const MaidLedgerScreen: React.FC<MaidLedgerScreenProps> = ({ colors }) =>
   // Calendar configuration (Default to July 2026)
   const [currentYear] = useState(2026);
   const [currentMonthIdx] = useState(6); // July
+
+  // Advance Form state
+  const [advanceModalVisible, setAdvanceModalVisible] = useState(false);
+  const [advAmount, setAdvAmount] = useState('');
+  const [advDate, setAdvDate] = useState(new Date().toISOString().split('T')[0]);
+  const [advNote, setAdvNote] = useState('');
+
+  // Calculate current month's statement & advances for the selected helper
+  const statements = selectedMaid
+    ? calculateMaidStatements(
+        selectedMaid,
+        maidState.attendance,
+        maidState.payments,
+        maidState.advances || [],
+        currentYear,
+        currentMonthIdx
+      )
+    : [];
+  
+  const activeStatement = statements.find(s => s.monthKey === '2026-07');
+  
+  const maidAdvances = selectedMaid
+    ? (maidState.advances || []).filter(a => a.ref_id === selectedMaid.id && a.module === 'maid')
+    : [];
+
+  const submitAdvanceForm = () => {
+    if (!selectedMaid || !advAmount || !advDate) {
+      Alert.alert('Error', 'Please fill all required fields.');
+      return;
+    }
+
+    const amount = parseFloat(advAmount);
+    if (isNaN(amount) || amount <= 0) {
+      Alert.alert('Error', 'Please enter a valid positive amount.');
+      return;
+    }
+
+    const newAdvance: Advance = {
+      id: 'adv_' + Date.now(),
+      module: 'maid',
+      ref_id: selectedMaid.id,
+      amount,
+      date: advDate,
+      note: advNote || undefined,
+    };
+
+    dispatch(addAdvance(newAdvance));
+    setAdvanceModalVisible(false);
+    setAdvAmount('');
+    setAdvNote('');
+    Alert.alert('Success', `Salary Advance of ₹${amount} logged successfully.`);
+  };
 
   const submitMaid = () => {
     if (!mName || !mPhone || !mRate) {
@@ -144,18 +197,61 @@ export const MaidLedgerScreen: React.FC<MaidLedgerScreenProps> = ({ colors }) =>
                 <Text style={[styles.payoutLabel, { color: colors.textMuted }]}>Monthly Pay</Text>
                 <Text style={[styles.payoutVal, { color: colors.text }]}>₹{selectedMaid.monthly_rate}</Text>
               </View>
+              {activeStatement && activeStatement.advanceDeduction > 0 && (
+                <View style={styles.payoutCol}>
+                  <Text style={[styles.payoutLabel, { color: colors.textMuted }]}>Advance Deduct</Text>
+                  <Text style={[styles.payoutVal, { color: colors.danger }]}>-₹{activeStatement.advanceDeduction}</Text>
+                </View>
+              )}
               <View style={styles.payoutCol}>
                 <Text style={[styles.payoutLabel, { color: colors.textMuted }]}>Net Due (July)</Text>
                 <Text style={[styles.payoutVal, { color: colors.primary }]}>
-                  ₹{calculateSalaryForMonth(
-                    selectedMaid,
-                    maidState.attendance.filter(a => a.maid_id === selectedMaid.id && a.date.startsWith('2026-07')),
-                    currentYear,
-                    currentMonthIdx
-                  ).finalSalary}
+                  ₹{activeStatement ? activeStatement.dueAmount : 0}
                 </Text>
               </View>
             </View>
+          </Card>
+
+          {/* Salary Advances Section */}
+          <Card colors={colors} style={{ marginBottom: 20, padding: 16 }}>
+            <View style={styles.advanceHeaderRow}>
+              <Text style={[styles.advanceTitle, { color: colors.text }]}>💸 Salary Advances</Text>
+              <Button
+                title="+ Give Advance"
+                size="sm"
+                colors={colors}
+                onPress={() => {
+                  setAdvAmount('');
+                  setAdvNote('');
+                  setAdvDate(new Date().toISOString().split('T')[0]);
+                  setAdvanceModalVisible(true);
+                }}
+              />
+            </View>
+
+            {activeStatement && activeStatement.remainingAdvance > 0 && (
+              <View style={[styles.carryoverAlert, { backgroundColor: colors.warning + '15', borderColor: colors.warning + '30' }]}>
+                <Text style={[styles.carryoverText, { color: colors.warning }]}>
+                  ⚠️ Outstanding Advance Carryover: ₹{activeStatement.remainingAdvance} (to be deducted in future months)
+                </Text>
+              </View>
+            )}
+
+            {maidAdvances.length === 0 ? (
+              <Text style={{ color: colors.textMuted, fontSize: 13, fontStyle: 'italic', marginVertical: 8 }}>
+                No advances logged for this helper.
+              </Text>
+            ) : (
+              maidAdvances.map(adv => (
+                <View key={adv.id} style={[styles.advanceItem, { borderBottomColor: colors.border }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.advanceDateText, { color: colors.textMuted }]}>{adv.date}</Text>
+                    {adv.note && <Text style={[styles.advanceNoteText, { color: colors.text }]}>{adv.note}</Text>}
+                  </View>
+                  <Text style={[styles.advanceAmountText, { color: colors.danger }]}>-₹{adv.amount}</Text>
+                </View>
+              ))
+            )}
           </Card>
 
           <Text style={[styles.sectionTitle, { color: colors.text }]}>July 2026 Attendance Tracker</Text>
@@ -292,6 +388,52 @@ export const MaidLedgerScreen: React.FC<MaidLedgerScreenProps> = ({ colors }) =>
               <View style={styles.modalButtons}>
                 <Button title="Cancel" variant="outline" colors={colors} onPress={() => setAttendanceModalVisible(false)} style={styles.modalBtn} />
                 <Button title="Log Status" colors={colors} onPress={submitAttendance} style={styles.modalBtn} />
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Log Salary Advance Modal */}
+      <Modal visible={advanceModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Give Salary Advance</Text>
+            <ScrollView>
+              <Input
+                label="Advance Amount (₹)"
+                value={advAmount}
+                onChangeText={setAdvAmount}
+                keyboardType="numeric"
+                colors={colors}
+              />
+              <Input
+                label="Date (YYYY-MM-DD)"
+                value={advDate}
+                onChangeText={setAdvDate}
+                colors={colors}
+              />
+              <Input
+                label="Note / Comment"
+                value={advNote}
+                onChangeText={setAdvNote}
+                colors={colors}
+              />
+
+              <View style={styles.modalButtons}>
+                <Button
+                  title="Cancel"
+                  variant="outline"
+                  colors={colors}
+                  onPress={() => setAdvanceModalVisible(false)}
+                  style={styles.modalBtn}
+                />
+                <Button
+                  title="Save Advance"
+                  colors={colors}
+                  onPress={submitAdvanceForm}
+                  style={styles.modalBtn}
+                />
               </View>
             </ScrollView>
           </View>
@@ -437,6 +579,44 @@ const styles = StyleSheet.create({
   },
   modalBtn: {
     flex: 0.48,
+  },
+  advanceHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  advanceTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  advanceItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  advanceAmountText: {
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  advanceDateText: {
+    fontSize: 12,
+  },
+  advanceNoteText: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  carryoverAlert: {
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+  },
+  carryoverText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
 });
 export default MaidLedgerScreen;

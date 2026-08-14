@@ -106,3 +106,13 @@ export interface RateChange {
   effective_from: string; // YYYY-MM-DD
   rate_per_ltr: number;
 }
+
+export interface Advance {
+  id: string;
+  module: 'milk' | 'laundry' | 'maid';
+  ref_id: string; // vendor_id or maid_id
+  amount: number;
+  date: string; // YYYY-MM-DD
+  note?: string;
+}
+

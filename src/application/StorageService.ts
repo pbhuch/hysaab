@@ -9,6 +9,7 @@ const STORAGE_KEYS = {
   MAID_ATTENDANCE: 'household_ledger_maid_attendance',
   PAYMENTS: 'household_ledger_payments',
   RATE_CHANGES: 'household_ledger_rate_changes',
+  ADVANCES: 'household_ledger_advances',
 };
 
 export class StorageService {

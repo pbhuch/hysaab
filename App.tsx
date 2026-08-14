@@ -65,8 +65,9 @@ const AppContent: React.FC = () => {
         const maids = await StorageService.load(STORAGE_KEYS.MAIDS, []);
         const attendance = await StorageService.load(STORAGE_KEYS.MAID_ATTENDANCE, []);
         const payments = await StorageService.load(STORAGE_KEYS.PAYMENTS, []);
-        if (maids.length > 0 || attendance.length > 0 || payments.length > 0) {
-          dispatch(setMaidState({ maids, attendance, payments }));
+        const advances = await StorageService.load(STORAGE_KEYS.ADVANCES, []);
+        if (maids.length > 0 || attendance.length > 0 || payments.length > 0 || advances.length > 0) {
+          dispatch(setMaidState({ maids, attendance, payments, advances }));
         }
       } catch (e) {
         console.error('Error loading stored ledger data:', e);

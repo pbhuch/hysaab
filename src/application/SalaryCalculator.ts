@@ -1,4 +1,4 @@
-import { Maid, MaidAttendance } from '../domain/types';
+import { Maid, MaidAttendance, Payment, Advance } from '../domain/types';
 
 export interface SalaryBreakdown {
   baseSalary: number;
@@ -132,3 +132,102 @@ export function calculateSalaryForMonth(
     totalDaysInMonth,
   };
 }
+
+export interface MaidMonthlyStatement {
+  year: number;
+  month: number; // 0-indexed
+  monthKey: string; // YYYY-MM
+  earnings: number;
+  advancesGiven: number;
+  carriedOverAdvance: number;
+  advanceDeduction: number;
+  netPayable: number;
+  remainingAdvance: number;
+  paymentsMade: number;
+  dueAmount: number;
+}
+
+export function getMonthsRange(startYearMonth: string, endYearMonth: string): { year: number; month: number; key: string }[] {
+  const result: { year: number; month: number; key: string }[] = [];
+  const [startYear, startMonth] = startYearMonth.split('-').map(Number);
+  const [endYear, endMonth] = endYearMonth.split('-').map(Number);
+  
+  let currYear = startYear;
+  let currMonth = startMonth - 1; // 0-indexed for JS Date
+  
+  const endDate = new Date(endYear, endMonth - 1, 1);
+  
+  while (new Date(currYear, currMonth, 1) <= endDate) {
+    const key = `${currYear}-${String(currMonth + 1).padStart(2, '0')}`;
+    result.push({ year: currYear, month: currMonth, key });
+    currMonth++;
+    if (currMonth > 11) {
+      currMonth = 0;
+      currYear++;
+    }
+  }
+  return result;
+}
+
+export function calculateMaidStatements(
+  maid: Maid,
+  attendance: MaidAttendance[],
+  payments: Payment[],
+  advances: Advance[],
+  targetYear: number,
+  targetMonth: number
+): MaidMonthlyStatement[] {
+  const joinMonthKey = maid.joined_date.substring(0, 7); // "YYYY-MM"
+  const targetMonthKey = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}`;
+  
+  if (targetMonthKey < joinMonthKey) {
+    return [];
+  }
+  
+  const months = getMonthsRange(joinMonthKey, targetMonthKey);
+  const statements: MaidMonthlyStatement[] = [];
+  
+  let carriedOverAdvance = 0;
+  
+  for (const { year, month, key } of months) {
+    // 1. Calculate earnings based on attendance
+    const mAtt = attendance.filter(a => a.maid_id === maid.id && a.date.startsWith(key));
+    const breakdown = calculateSalaryForMonth(maid, mAtt, year, month);
+    const earnings = breakdown.finalSalary;
+    
+    // 2. Sum advances given in this month
+    const mAdvances = advances.filter(a => a.ref_id === maid.id && a.module === 'maid' && a.date.startsWith(key));
+    const advancesGiven = mAdvances.reduce((sum, a) => sum + a.amount, 0);
+    
+    // 3. Compute outstanding advance and deductions
+    const totalOutstandingAdvance = carriedOverAdvance + advancesGiven;
+    const advanceDeduction = Math.min(earnings, totalOutstandingAdvance);
+    const netPayable = earnings - advanceDeduction;
+    const remainingAdvance = totalOutstandingAdvance - advanceDeduction;
+    
+    // 4. Sum payments made for this month
+    const mPayments = payments.filter(p => p.ref_id === maid.id && p.module === 'maid' && p.period_start.startsWith(key));
+    const paymentsMade = mPayments.reduce((sum, p) => sum + p.amount, 0);
+    
+    const dueAmount = Math.max(0, netPayable - paymentsMade);
+    
+    statements.push({
+      year,
+      month,
+      monthKey: key,
+      earnings,
+      advancesGiven,
+      carriedOverAdvance,
+      advanceDeduction,
+      netPayable,
+      remainingAdvance,
+      paymentsMade,
+      dueAmount,
+    });
+    
+    carriedOverAdvance = remainingAdvance;
+  }
+  
+  return statements;
+}
+
